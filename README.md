@@ -9,10 +9,16 @@ It securely shares a player’s active mod list with the server, helping admins 
 - Lightweight and unobtrusive — no gameplay changes  
 
 ### Requirements
-- Minecraft 1.21.8 (Fabric)  
+- Minecraft 1.21.10 (Fabric)  
 - Server must have the ModSeeker plugin installed  
 
 
+📢 Project Updates & Community Discord
 
-coming very soon~~
+I'm actively working on the project, and development is progressing steadily.
+If you'd like to receive updates, follow development closely, or share feedback, you’re welcome to join the community Discord server:
+
+👉 https://discord.gg/EYJqM75tnT
+
+More updates will be posted there. Thanks for your support! 🚀
 
