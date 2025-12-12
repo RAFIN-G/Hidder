@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "id": "hidder",
+  "version": "1.21.10",
+  "name": "Hidder",
+  "description": "Hidder - Advanced mod verification and system information reporting",
+  "icon": "assets/hidder/icon.png",
+  "authors": [
+    "RAFIN-G"
+  ],
+  "license": "AGPL-3.0",
+  "environment": "client",
+  "entrypoints": {
+    "client": [
+      "com.example.hidder.HidderFabric"
+    ]
+  },
+  "depends": {
+    "fabricloader": ">=0.17.0",
+    "minecraft": "~1.21.10",
+    "java": ">=21",
+    "fabric-api": "*"
+  },
+  "custom": {
+    "modmenu": {
+      "description": "Hidder - Advanced server management system"
+    }
+  }
+}
