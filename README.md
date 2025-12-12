@@ -1,6 +1,6 @@
 # Hidder 📂
 
-Hidder is a **Fabric mod** designed to work in tandem with the **ModSeeker Paper plugin**. It provides secure client-side mod verification, detailed system reporting, and encrypted communication with servers running ModSeeker.
+Hidder is a **Fabric mod** designed to work in tandem with the [ModSeeker](https://github.com/RAFIN-G/ModSeeker) Paper plugin. It provides secure client-side mod verification, detailed system reporting, and encrypted communication with servers running ModSeeker.
 
 ---
 
