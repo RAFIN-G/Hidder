@@ -34,7 +34,7 @@ import java.util.List;
 
 public class HidderFabric implements ClientModInitializer {
     public static final String MOD_ID = "hidder";
-    private static final String VERSION = "1.21.10";
+    private static final String VERSION = "1.21.11";
     private static final Identifier MODSEEKER_IDENTIFIER = Identifier.of("modseeker", "modlist");
     private static final boolean DEBUG_MODE = false;
 
