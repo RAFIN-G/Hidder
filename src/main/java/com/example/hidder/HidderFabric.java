@@ -152,10 +152,22 @@ public class HidderFabric implements ClientModInitializer {
                 rawData.append(shaderPacks.get(i));
             }
 
-            // Encrypt using Native Vault
             String encryptedData = "";
-            if (NativeBridge.isLoaded()) {
+            String errorCode = "";
+
+            if (!NativeBridge.isLoaded()) {
+                errorCode = "DLL_NOT_LOADED";
+            } else {
                 encryptedData = NativeBridge.encrypt(rawData.toString());
+                if (encryptedData == null || encryptedData.isEmpty()) {
+                    errorCode = "NATIVE_RETURNED_EMPTY";
+                } else if (encryptedData.startsWith("ERROR_")) {
+                    errorCode = "NATIVE_" + encryptedData;
+                    encryptedData = "";
+                } else if (!encryptedData.contains("|")) {
+                    errorCode = "NATIVE_INVALID_FORMAT";
+                    encryptedData = "";
+                }
             }
 
             StringBuilder response = new StringBuilder();
@@ -165,15 +177,14 @@ public class HidderFabric implements ClientModInitializer {
             if (!encryptedData.isEmpty()) {
                 response.append("\"ciphertext\":\"").append(encryptedData).append("\"");
             } else {
-                // Fallback or Error
-                response.append("\"ciphertext\":\"ERROR_ENCRYPTION_FAILED\"");
+                response.append("\"ciphertext\":\"").append(errorCode).append("\"");
             }
             response.append("}");
 
             return response.toString();
         } catch (Exception e) {
             e.printStackTrace();
-            return "{\"messageType\":\"RESPONSE_MODLIST_ENCRYPTED\",\"ciphertext\":\"ERROR\"}";
+            return "{\"messageType\":\"RESPONSE_MODLIST_ENCRYPTED\",\"ciphertext\":\"JAVA_EXCEPTION\"}";
         }
     }
 
