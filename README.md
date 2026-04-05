@@ -1,6 +1,6 @@
 # Hidder 📂
 
-Hidder is the **client-side companion** to the [ModSeeker](https://modrinth.com/plugin/modseeker) Paper plugin. Install it on your Fabric client and it handles the rest — reporting your installed mods, detecting your launcher, and proving everything through encrypted, tamper-proof communication that servers can trust.
+Hidder is the **client-side companion** to the [ModSeeker](https://github.com/RAFIN-G/ModSeeker) Paper plugin. Install it on your Fabric client and it handles the rest — reporting your installed mods, detecting your launcher, and proving everything through encrypted, tamper-proof communication that servers can trust.
 
 [![](https://github.com/gabrielvicenteYT/modrinth-icons/raw/main/Branding/Badge/badge-dark.svg)](https://modrinth.com/mod/hidder)
 
