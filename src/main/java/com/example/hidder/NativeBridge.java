@@ -88,4 +88,29 @@ public class NativeBridge {
     public static native String sign(String data);
 
     public static native String encrypt(String data);
+
+    // v2.0 Native Methods
+
+    /**
+     * Sign a beacon timestamp for Layer 0 pre-login verification
+     * 
+     * @param timestamp The timestamp to sign
+     * @return Base64 encoded RSA signature
+     */
+    public static native String signBeacon(long timestamp);
+
+    /**
+     * Compute HMAC for Layer 1 challenge-response
+     * 
+     * @param nonce The server's challenge nonce
+     * @return Base64 encoded HMAC
+     */
+    public static native String computeHmac(String nonce);
+
+    /**
+     * Detect which launcher is running the game
+     * 
+     * @return Launcher ID string (prism, multimc, curseforge, etc.) or "unknown"
+     */
+    public static native String detectLauncher();
 }

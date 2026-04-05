@@ -19,14 +19,17 @@ package com.example.hidder;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
-import net.fabricmc.fabric.api.networking.v1.PacketByteBufs;
 import net.fabricmc.fabric.api.networking.v1.PacketSender;
 import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
 import net.fabricmc.loader.api.FabricLoader;
-import net.minecraft.network.PacketByteBuf;
-import net.minecraft.network.codec.PacketCodec;
-import net.minecraft.network.packet.CustomPayload;
-import net.minecraft.util.Identifier;
+import net.minecraft.network.FriendlyByteBuf;
+import net.minecraft.network.RegistryFriendlyByteBuf;
+import net.minecraft.network.codec.StreamCodec;
+import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
+import net.minecraft.resources.Identifier;
+import io.netty.buffer.Unpooled;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import java.io.File;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -34,14 +37,18 @@ import java.util.List;
 
 public class HidderFabric implements ClientModInitializer {
     public static final String MOD_ID = "hidder";
-    private static final String VERSION = "1.21.11";
-    private static final Identifier MODSEEKER_IDENTIFIER = Identifier.of("modseeker", "modlist");
+    private static final String VERSION = "26.1";
+    private static final Identifier MODSEEKER_IDENTIFIER = Identifier.parse("modseeker:modlist");
+    private static final Logger LOGGER = LoggerFactory.getLogger("Hidder");
     private static final boolean DEBUG_MODE = false;
+
+    // Layer 3 nonce received from REQUEST_MODLIST (per-session)
+    private String layer3Nonce = null;
 
     @Override
     public void onInitializeClient() {
-        PayloadTypeRegistry.playC2S().register(ModSeekerPayload.ID, ModSeekerPayload.CODEC);
-        PayloadTypeRegistry.playS2C().register(ModSeekerPayload.ID, ModSeekerPayload.CODEC);
+        PayloadTypeRegistry.serverboundPlay().register(ModSeekerPayload.ID, ModSeekerPayload.CODEC);
+        PayloadTypeRegistry.clientboundPlay().register(ModSeekerPayload.ID, ModSeekerPayload.CODEC);
 
         ClientPlayNetworking.registerGlobalReceiver(ModSeekerPayload.ID, (payload, context) -> {
             String message = extractStringFromPacket(payload.data());
@@ -59,7 +66,7 @@ public class HidderFabric implements ClientModInitializer {
         });
     }
 
-    private String extractStringFromPacket(PacketByteBuf buf) {
+    private String extractStringFromPacket(FriendlyByteBuf buf) {
         try {
             byte[] bytes = new byte[buf.readableBytes()];
             buf.readBytes(bytes);
@@ -72,6 +79,7 @@ public class HidderFabric implements ClientModInitializer {
     private void processServerMessage(String message, ClientPlayNetworking.Context context) {
         try {
             if (message.contains("REQUEST_MODLIST")) {
+                LOGGER.info("[Hidder] Processing: REQUEST_MODLIST");
                 int start;
                 int end;
                 String checkId = "unknown";
@@ -79,14 +87,126 @@ public class HidderFabric implements ClientModInitializer {
                         && (end = message.indexOf("\"", start = message.indexOf("\"checkId\":\"") + 11)) > start) {
                     checkId = message.substring(start, end);
                 }
+                // Extract Layer 3 nonce from REQUEST_MODLIST
+                String nonce = extractJsonValue(message, "nonce");
+                if (nonce != null && !nonce.isEmpty()) {
+                    this.layer3Nonce = nonce;
+                    LOGGER.info("[Hidder] Layer 3 nonce received");
+                }
                 sendModListResponse(context, checkId);
+            } else if (message.contains("\"messageType\":\"CHALLENGE\"")) {
+                LOGGER.info("[Hidder] Processing: CHALLENGE");
+                handleChallenge(message, context);
             } else if (message.contains("ACKNOWLEDGE_PRESENCE")) {
-                // Server acknowledged our presence
+                LOGGER.info("[Hidder] Processing: ACKNOWLEDGE_PRESENCE");
             } else {
-                // Unknown message type
+                LOGGER.info("[Hidder] Processing: UNKNOWN message type: " + message.substring(0, Math.min(message.length(), 80)));
             }
         } catch (Exception e) {
+            LOGGER.error("[Hidder] ERROR in processServerMessage: " + e.getMessage());
             e.printStackTrace();
+        }
+    }
+
+    private void handleChallenge(String message, ClientPlayNetworking.Context context) {
+        try {
+            String nonce = extractJsonValue(message, "nonce");
+            String timestampStr = extractJsonValue(message, "timestamp");
+            long timestamp = Long.parseLong(timestampStr);
+
+            String hmac;
+            String launcherId;
+            String launcherName;
+
+            if (NativeBridge.isLoaded()) {
+                String dataToSign = nonce + timestamp;
+                hmac = NativeBridge.computeHmac(dataToSign);
+                launcherId = NativeBridge.detectLauncher();
+                launcherName = getLauncherDisplayName(launcherId);
+            } else {
+                hmac = "DLL_NOT_LOADED";
+                launcherId = "unknown";
+                launcherName = "Unknown (Native Error)";
+            }
+
+            String response = "{\"messageType\":\"CHALLENGE_RESPONSE\"," +
+                    "\"hmac\":\"" + hmac + "\"," +
+                    "\"launcherId\":\"" + launcherId + "\"," +
+                    "\"launcherName\":\"" + launcherName + "\"}";
+
+            sendPluginMessage(response, context.responseSender());
+
+        } catch (Throwable t) {
+            LOGGER.error("[Hidder] CRITICAL ERROR in handleChallenge: " + t.getClass().getName() + " - " + t.getMessage());
+            t.printStackTrace();
+            try {
+                String errorMsg = t.getMessage() != null ? t.getMessage().replace("\"", "'") : "Unknown";
+                String errorResponse = "{\"messageType\":\"CHALLENGE_RESPONSE\"," +
+                        "\"hmac\":\"CLIENT_ERROR\"," +
+                        "\"launcherId\":\"unknown\"," +
+                        "\"launcherName\":\"Error: " + errorMsg + "\"}";
+                sendPluginMessage(errorResponse, context.responseSender());
+                LOGGER.info("[Hidder] Error response sent");
+            } catch (Exception ignored) {
+                LOGGER.error("[Hidder] FATAL: Could not send error response either: " + ignored.getMessage());
+            }
+        }
+    }
+
+    private String extractJsonValue(String json, String key) {
+        String searchKey = "\"" + key + "\":";
+        int keyIndex = json.indexOf(searchKey);
+        if (keyIndex == -1)
+            return "";
+
+        int valueStart = keyIndex + searchKey.length();
+        char firstChar = json.charAt(valueStart);
+
+        if (firstChar == '"') {
+            int start = valueStart + 1;
+            int end = json.indexOf("\"", start);
+            return json.substring(start, end);
+        } else {
+            int end = valueStart;
+            while (end < json.length() && (Character.isDigit(json.charAt(end)) || json.charAt(end) == '-')) {
+                end++;
+            }
+            return json.substring(valueStart, end);
+        }
+    }
+
+    private String getLauncherDisplayName(String launcherId) {
+        switch (launcherId) {
+            case "prism":
+                return "Prism Launcher";
+            case "multimc":
+                return "MultiMC";
+            case "curseforge":
+                return "CurseForge";
+            case "atlauncher":
+                return "ATLauncher";
+            case "modrinth":
+                return "Modrinth App";
+            case "gdlauncher":
+                return "GDLauncher";
+            case "technic":
+                return "Technic Launcher";
+            case "ftb":
+                return "FTB App";
+            case "lunar":
+                return "Lunar Client";
+            case "badlion":
+                return "Badlion Client";
+            case "feather":
+                return "Feather Client";
+            case "labymod":
+                return "LabyMod";
+            case "tlauncher":
+                return "TLauncher";
+            case "sklauncher":
+                return "SKLauncher";
+            default:
+                return "Unknown";
         }
     }
 
@@ -110,7 +230,7 @@ public class HidderFabric implements ClientModInitializer {
 
     private void sendPluginMessage(String message, PacketSender sender) {
         try {
-            PacketByteBuf buf = PacketByteBufs.create();
+            FriendlyByteBuf buf = new FriendlyByteBuf(Unpooled.buffer());
             byte[] messageBytes = message.getBytes(StandardCharsets.UTF_8);
             buf.writeBytes(messageBytes);
             ModSeekerPayload payload = new ModSeekerPayload(buf);
@@ -151,6 +271,18 @@ public class HidderFabric implements ClientModInitializer {
                     rawData.append(",");
                 rawData.append(shaderPacks.get(i));
             }
+
+            // Append Layer 3 nonce for session binding
+            rawData.append("|").append("nonce=").append(layer3Nonce != null ? layer3Nonce : "none");
+
+            // Compute inner HMAC of the data (everything up to this point)
+            // This HMAC is verified server-side to ensure data integrity
+            String innerHmac = "";
+            if (NativeBridge.isLoaded()) {
+                innerHmac = NativeBridge.computeHmac(rawData.toString());
+                LOGGER.info("[Hidder] Layer 3 inner HMAC computed");
+            }
+            rawData.append("|").append("innerHmac=").append(innerHmac);
 
             String encryptedData = "";
             String errorCode = "";
@@ -262,14 +394,14 @@ public class HidderFabric implements ClientModInitializer {
         return shaderPacks;
     }
 
-    public record ModSeekerPayload(PacketByteBuf data) implements CustomPayload {
-        public static final CustomPayload.Id<ModSeekerPayload> ID = new CustomPayload.Id<>(MODSEEKER_IDENTIFIER);
-        public static final PacketCodec<PacketByteBuf, ModSeekerPayload> CODEC = PacketCodec.of(
-                (value, buf) -> buf.writeBytes(value.data.copy()),
-                buf -> new ModSeekerPayload(new PacketByteBuf(buf.readBytes(buf.readableBytes()))));
+    public record ModSeekerPayload(FriendlyByteBuf data) implements CustomPacketPayload {
+        public static final CustomPacketPayload.Type<ModSeekerPayload> ID = new CustomPacketPayload.Type<>(MODSEEKER_IDENTIFIER);
+        public static final StreamCodec<RegistryFriendlyByteBuf, ModSeekerPayload> CODEC = StreamCodec.of(
+                (buf, value) -> buf.writeBytes(value.data.copy()),
+                buf -> new ModSeekerPayload(new FriendlyByteBuf(buf.readBytes(buf.readableBytes()))));
 
         @Override
-        public CustomPayload.Id<? extends CustomPayload> getId() {
+        public CustomPacketPayload.Type<? extends CustomPacketPayload> type() {
             return ID;
         }
     }

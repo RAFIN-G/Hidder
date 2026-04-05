@@ -1,0 +1,30 @@
+# Build output
+build/
+bin/
+out/
+run/
+
+# Gradle
+.gradle/
+gradle/wrapper/gradle-wrapper.jar
+
+# IDE
+.idea/
+*.iml
+.vscode/
+.settings/
+.project
+.classpath
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Compiled native binaries (contain baked-in keys — never commit)
+native/hidder_vault.dll
+native/*.obj
+native/*.exp
+native/*.lib
+
+# The DLLs in resources are the production binaries — builders must compile their own
+# src/main/resources/hidder_vault.dll  <-- This one IS committed as a placeholder/example

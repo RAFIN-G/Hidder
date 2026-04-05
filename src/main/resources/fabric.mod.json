@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "hidder",
-  "version": "1.21.11",
+  "version": "26.1",
   "name": "Hidder",
   "description": "Hidder - Advanced mod verification and system information reporting",
   "icon": "assets/hidder/icon.png",
@@ -16,11 +16,13 @@
     ]
   },
   "depends": {
-    "fabricloader": ">=0.17.0",
-    "minecraft": "~1.21.11",
-    "java": ">=21",
+    "minecraft": "~26.1",
+    "java": ">=25",
     "fabric-api": "*"
   },
+  "mixins": [
+    "hidder.mixins.json"
+  ],
   "custom": {
     "modmenu": {
       "description": "Hidder - Advanced server management system"
