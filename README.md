@@ -261,4 +261,4 @@ When setting up a new deployment from scratch:
 
 ## License
 
-This project is licensed under **AGPL-3.0**. See the [LICENSE](LICENSE) file for details.
+This project is licensed under **AGPL-3.0**. See the [LICENSE](https://github.com/RAFIN-G/Hidder/blob/main/LICENSE) file for details.
