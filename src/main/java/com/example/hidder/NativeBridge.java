@@ -1,116 +1,116 @@
-/*
- * Copyright (C) 2025 ModSeeker
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
- */
+// SPDX-FileCopyrightText: 2025 ModSeeker
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 package com.example.hidder;
 
-import java.io.File;
-import java.io.FileOutputStream;
-import java.io.InputStream;
+import net.fabricmc.api.ClientModInitializer;
+import net.fabricmc.loader.api.FabricLoader;
+import net.fabricmc.loader.api.ModContainer;
+import net.fabricmc.loader.api.metadata.ModOrigin;
+import java.nio.file.Files;
+import java.nio.file.Path;
 
-public class NativeBridge {
-    private static boolean loaded = false;
+final class NativeBridge {
+    private static volatile boolean loaded;
 
-    static {
-        loadLibrary();
+    private NativeBridge() {
     }
 
-    private static void loadLibrary() {
-        try {
-            File tempDir = new File(System.getProperty("java.io.tmpdir"),
-                    "hidder_native_" + System.currentTimeMillis());
-            tempDir.mkdirs();
-            tempDir.deleteOnExit();
-
-            String opensslLib = "libcrypto-3-x64.dll";
-            InputStream opensslIn = NativeBridge.class.getResourceAsStream("/" + opensslLib);
-            File opensslFile = null;
-            if (opensslIn != null) {
-                opensslFile = new File(tempDir, opensslLib);
-                opensslFile.deleteOnExit();
-                try (FileOutputStream out = new FileOutputStream(opensslFile)) {
-                    byte[] buffer = new byte[8192];
-                    int read;
-                    while ((read = opensslIn.read(buffer)) != -1) {
-                        out.write(buffer, 0, read);
-                    }
-                }
-                opensslIn.close();
-
-                System.load(opensslFile.getAbsolutePath());
-            } else {
-                System.err.println("⚠️ OpenSSL library not found in JAR: " + opensslLib);
-                return; // Can't continue without OpenSSL
-            }
-
-            String libName = "hidder_vault.dll";
-            InputStream in = NativeBridge.class.getResourceAsStream("/" + libName);
-            if (in == null) {
-                System.err.println("⚠️ Native Library not found in JAR: " + libName);
-                return;
-            }
-
-            File tempFile = new File(tempDir, libName);
-            tempFile.deleteOnExit();
-            try (FileOutputStream out = new FileOutputStream(tempFile)) {
-                byte[] buffer = new byte[8192];
-                int read;
-                while ((read = in.read(buffer)) != -1) {
-                    out.write(buffer, 0, read);
-                }
-            }
-            in.close();
-
-            System.load(tempFile.getAbsolutePath());
-            loaded = true;
-        } catch (Throwable e) {
-            System.err.println("❌ Failed to load Native Vault: " + e.getMessage());
-            e.printStackTrace();
+    private static synchronized boolean loadLibrary() {
+        if (!loaded) {
+            loaded = NativeLibraryLoader.load();
         }
-    }
-
-    public static boolean isLoaded() {
         return loaded;
     }
 
-    public static native String sign(String data);
+    static boolean initialize(HidderFabric owner) {
+        return validFabricOwner(owner) && loadLibrary() && nativeInitialize(owner);
+    }
 
-    public static native String encrypt(String data);
+    static boolean beginConnection(HidderFabric owner, long generation, String connectionContext) {
+        return loaded && nativeBeginConnection(owner, generation, connectionContext);
+    }
 
-    // v2.0 Native Methods
+    static void invalidate(HidderFabric owner, long generation) {
+        if (loaded) {
+            nativeInvalidate(owner, generation);
+        }
+    }
 
-    /**
-     * Sign a beacon timestamp for Layer 0 pre-login verification
-     * 
-     * @param timestamp The timestamp to sign
-     * @return Base64 encoded RSA signature
-     */
-    public static native String signBeacon(long timestamp);
+    static boolean isReady(HidderFabric owner) {
+        return loaded && nativeIsReady(owner);
+    }
 
-    /**
-     * Compute HMAC for Layer 1 challenge-response
-     * 
-     * @param nonce The server's challenge nonce
-     * @return Base64 encoded HMAC
-     */
-    public static native String computeHmac(String nonce);
+    static String signConnectionChallenge(HidderFabric owner, long generation, String connectionContext,
+            String nonce, long timestamp) {
+        return loaded
+                ? nativeSignConnectionChallenge(owner, generation, connectionContext, nonce, timestamp)
+                : "ERROR_STATE";
+    }
 
-    /**
-     * Detect which launcher is running the game
-     * 
-     * @return Launcher ID string (prism, multimc, curseforge, etc.) or "unknown"
-     */
-    public static native String detectLauncher();
+    static String sealConnectionReport(HidderFabric owner, long generation, String connectionContext,
+            String fields, String serverPubKey, String resolvedSources, boolean advanced) {
+        return loaded
+                ? nativeSealConnectionReport(owner, generation, connectionContext, fields, serverPubKey,
+                        resolvedSources, advanced)
+                : "ERROR_STATE";
+    }
+
+    private static boolean validFabricOwner(HidderFabric owner) {
+        try {
+            if (owner == null || owner.getClass() != HidderFabric.class
+                    || owner.getClass().getClassLoader() != NativeBridge.class.getClassLoader()) {
+                return false;
+            }
+            FabricLoader loader = FabricLoader.getInstance();
+            if (!loader.isModLoaded(HidderFabric.MOD_ID)) {
+                return false;
+            }
+            boolean registered = loader.getEntrypoints("client", ClientModInitializer.class).stream()
+                    .anyMatch(entrypoint -> entrypoint == owner);
+            if (!registered) {
+                return false;
+            }
+            ModContainer container = loader.getModContainer(HidderFabric.MOD_ID).orElseThrow();
+            if (!HidderFabric.MOD_ID.equals(container.getMetadata().getId())
+                    || container.getOrigin().getKind() != ModOrigin.Kind.PATH) {
+                return false;
+            }
+            if (NativeBridge.class.getProtectionDomain() == null
+                    || NativeBridge.class.getProtectionDomain().getCodeSource() == null) {
+                return false;
+            }
+            Path codeSource = Path.of(NativeBridge.class.getProtectionDomain().getCodeSource().getLocation().toURI())
+                    .toAbsolutePath().normalize();
+            for (Path origin : container.getOrigin().getPaths()) {
+                Path normalized = origin.toAbsolutePath().normalize();
+                if (codeSource.equals(normalized)
+                        || Files.exists(codeSource) && Files.exists(normalized) && Files.isSameFile(codeSource, normalized)) {
+                    return true;
+                }
+            }
+            return false;
+        } catch (Exception exception) {
+            return false;
+        }
+    }
+
+    static boolean isLoaded() {
+        return loaded;
+    }
+
+    private static native boolean nativeInitialize(HidderFabric owner);
+
+    private static native boolean nativeBeginConnection(HidderFabric owner, long generation,
+            String connectionContext);
+
+    private static native void nativeInvalidate(HidderFabric owner, long generation);
+
+    private static native boolean nativeIsReady(HidderFabric owner);
+
+    private static native String nativeSignConnectionChallenge(HidderFabric owner, long generation,
+            String connectionContext, String nonce, long timestamp);
+
+    private static native String nativeSealConnectionReport(HidderFabric owner, long generation,
+            String connectionContext, String fields, String serverPubKey, String resolvedSources, boolean advanced);
 }

@@ -1,264 +1,127 @@
-# Hidder 📂
+<p align="center">
+  <img src="docs/assets/hidder-banner.svg" alt="Hidder — The client companion to ModSeeker. Fabric mod." width="100%">
+</p>
 
-Hidder is the **client-side companion** to the [ModSeeker](https://github.com/RAFIN-G/ModSeeker) Paper plugin. Install it on your Fabric client and it handles the rest — reporting your installed mods, detecting your launcher, and proving everything through encrypted, tamper-proof communication that servers can trust.
+<p align="center">
+  <a href="https://modrinth.com/mod/hidder"><strong>Modrinth</strong></a> ·
+  <a href="https://github.com/RAFIN-G/Hidder/releases"><strong>GitHub releases</strong></a> ·
+  <a href="#compatibility">Compatibility</a> ·
+  <a href="#getting-started">Getting started</a> ·
+  <a href="#what-hidder-sends">What Hidder sends</a> ·
+  <a href="#building-from-source">Build from source</a>
+</p>
 
-[![](https://github.com/gabrielvicenteYT/modrinth-icons/raw/main/Branding/Badge/badge-dark.svg)](https://modrinth.com/mod/hidder)
+Hidder is the **Fabric client companion** to ModSeeker. It reports your mods and detected launcher when you connect to a ModSeeker server. The server owner decides which mods and launchers are allowed.
 
 <table>
-<tr>
-<td align="center" width="50%">
-<h3>📦 Mod Reporting</h3>
-<p>Collects all installed mods, resource packs, and shaders — encrypted end-to-end before leaving your client</p>
-</td>
-<td align="center" width="50%">
-<h3>🔎 Launcher Detection</h3>
-<p>Identifies your launcher using native OS-level inspection — not self-reported, not guessable</p>
-</td>
-</tr>
+  <tr>
+    <td align="center" width="96" style="border: 1px solid #3d444d;">
+      <a href="https://modrinth.com/plugin/modseeker"><img src="docs/assets/modseeker.svg" alt="ModSeeker" width="64" height="64"></a>
+    </td>
+    <td style="border: 1px solid #3d444d;">
+      <h3>ModSeeker is required</h3>
+      <p>The server needs the <strong>ModSeeker Paper plugin</strong> to use Hidder's reports and enforce its rules. Players install Hidder on their client; server owners install ModSeeker.</p>
+      <p><a href="https://modrinth.com/plugin/modseeker"><strong>Get ModSeeker on Modrinth →</strong></a> · <a href="https://github.com/RAFIN-G/ModSeeker">ModSeeker source</a></p>
+    </td>
+  </tr>
 </table>
-
----
 
 ## Features
 
-- **Client-Side Only** — Runs exclusively on the client with zero server-side components
-- **Native Security Module** — Cryptographic operations run inside a compiled C++ library, not Java bytecode
-- **Hybrid Encryption** — Mod list data is encrypted using RSA key exchange + AES-256-CBC
-- **Integrity Signatures** — Every response includes a session-bound HMAC proving data authenticity
-- **Launcher Detection** — Identifies which launcher started the game using native OS-level APIs
-- **Replay Attack Protection** — Cryptographic nonces and timestamps prevent reuse of old responses
-- **Automatic Setup** — Native libraries are extracted and loaded at runtime with no manual configuration
+| Feature | Description |
+| --- | --- |
+| **Automatic verification** | Responds to the server's checks when you join, without commands or a separate app. |
+| **Report protection** | Signs and encrypts mod reports for the connected server. |
+| **Bundled native library** | Includes its Windows library; no separate OpenSSL or C++ runtime installation is needed. |
 
-## Version Compatibility
+## Compatibility
 
----
+**Platform:** Windows x64 · **Mod loader:** Fabric · **Dependency:** Fabric API
 
-## Version Compatibility
+Choose a Hidder JAR for your Minecraft version. One JAR supports all three listed Fabric Loader versions.
 
-| Minecraft Version | Fabric Loader | Java | Status |
-|-------------------|---------------|------|--------|
-| 26.1 / 26.1.1 | 0.18.0+ | Java 25+ | ✅ Latest |
-| 1.21.11 | 0.17.2+ | Java 21+ | ✅ Supported |
-| 1.21.10 | 0.17.2+ | Java 21+ | ✅ Supported |
-| 1.21.9 | 0.17.2+ | Java 21+ | ✅ Supported |
-| 1.21.8 | 0.17.2+ | Java 21+ | ✅ Supported |
-| 1.21.7 | 0.17.2+ | Java 21+ | ✅ Supported |
-| 1.21.4 | 0.17.2+ | Java 21+ | ✅ Supported |
+| Minecraft version | Java | Fabric Loader |
+| --- | --- | --- |
+| **1.21, 1.21.4, 1.21.7, 1.21.8, 1.21.9, 1.21.10, 1.21.11** | 21 | 0.19.3, 0.19.5, 0.20.1 |
+| **26.1.2, 26.2, 26.3** | 25 | 0.19.3, 0.19.5, 0.20.1 |
 
-Download the JAR matching your Minecraft version from [Modrinth](https://modrinth.com/mod/hidder) or [Releases](https://github.com/RAFIN-G/Hidder/releases).
+The download labelled `mc26.1` is for **Minecraft 26.1.2**. Fabric API must also match your Minecraft version. Other Fabric Loader versions are not supported by this release.
 
----
+## Getting started
 
-## Requirements
+1. Create a **Fabric** instance for your Minecraft version using one of the supported Loader versions above.
+2. Download the matching [Hidder JAR](https://modrinth.com/mod/hidder/versions) and [Fabric API](https://modrinth.com/mod/fabric-api/versions).
+3. Put both files in that instance's `mods/` folder, then launch Minecraft.
+4. Join a server running **ModSeeker v3**. Verification happens automatically.
 
-- **Fabric Loader** 0.17.2 or higher (0.18.0+ for 26.1)
-- **Fabric API**
-- Java **21+** (Java **25+** for Minecraft 26.1)
-- A server running [ModSeeker](https://github.com/RAFIN-G/ModSeeker)
+If the server rejects a mod or launcher, follow its disconnect message or contact the server owner.
 
----
+## What Hidder sends
 
-## Installation
+Reports go to the **Minecraft server you join**, through the existing game connection. Hidder does not use a separate telemetry service.
 
-1. Install **Fabric Loader** for your Minecraft version
-2. Download the Hidder JAR matching your version from [Modrinth](https://modrinth.com/mod/hidder) or [Releases](https://github.com/RAFIN-G/Hidder/releases)
-3. Place the JAR in your `mods/` folder
-4. Launch the game
+| Data | When it is sent |
+| --- | --- |
+| **Mods** | IDs and version strings during mod verification, including entries found in declared bundled mod JARs. |
+| **Mod file hashes** | When the server requests advanced verification. These SHA-512 hashes let ModSeeker check approved files. |
+| **Launcher** | In response to a launcher challenge. ModSeeker requests this when launcher verification is enabled; the result is a launcher label or `unknown`. |
+| **Verification** | Hidder presence, version information, request IDs, signatures and verification errors. |
 
-No configuration is required. Hidder operates silently and responds automatically when a ModSeeker server requests verification.
+Hidder reads mod JARs and launcher information locally. It does **not** upload the JAR contents, local file paths or raw process details. It does not report hardware IDs, resource packs or shader packs.
 
----
+Server administrators can read these reports. ModSeeker logs mod lists to its console by default, and server owners can also enable Discord notifications.
 
-## How It Works
+## Building from source
 
-When you join a server running ModSeeker, the following process occurs automatically in the background:
+The shared build tool is in [ModSeeker's Tools folder](https://github.com/RAFIN-G/ModSeeker/tree/main/Tools): [StartCustomBuild.ps1](https://github.com/RAFIN-G/ModSeeker/blob/main/Tools/StartCustomBuild.ps1) and its [key generator](https://github.com/RAFIN-G/ModSeeker/blob/main/Tools/ClientReportKeyGenerator.java). Download the full ModSeeker source alongside Hidder and keep those two tool files together.
 
+<details>
+<summary>Build ModSeeker and Hidder together</summary>
+
+`StartCustomBuild.ps1` builds **both the ModSeeker server plugin and the Hidder client mod**, including Hidder's native DLL. You need both source repositories, even if you started from only one project's page.
+
+Build on **Windows x64** with **JDK 25** and the following native dependencies:
+
+| Software | What to install |
+| --- | --- |
+| [Visual Studio Build Tools](https://visualstudio.microsoft.com/downloads/#build-tools-for-visual-studio) | Select **Desktop development with C++**, including the MSVC x64 tools. |
+| [Windows SDK](https://learn.microsoft.com/en-us/windows/apps/windows-sdk/) | Install through the Build Tools installer or separately. |
+| [OpenSSL 3.x](https://github.com/openssl/openssl) | Provide the headers and x64 static `libcrypto` libraries built with `/MT`. |
+
+The OpenSSL directory must contain `include/openssl/` and `lib/VC/x64/MT/libcrypto_static.lib`. A runtime-only OpenSSL package is not sufficient. To build OpenSSL from source, see its [Windows build instructions](https://github.com/openssl/openssl/blob/master/NOTES-WINDOWS.md); that process also uses [Strawberry Perl](https://strawberryperl.com/) and [NASM](https://www.nasm.us/).
+
+Gradle is included through the wrapper. Git is optional when downloading the source as ZIP files. Players installing the release JARs do not need these build tools.
+
+The default native compiler is MSVC. Optional obfuscated builds require a Windows OLLVM-enabled `clang-cl.exe`, supplied through `-ClangCl`. It must support the obfuscation options in Hidder's native build script; standard LLVM `clang-cl` alone does not provide those passes.
+
+For an OLLVM 16 reference implementation, see [source and build instructions](https://github.com/wwh1004/ollvm-16) or its [compiler downloads](https://github.com/wwh1004/ollvm-16/releases). Obtain or build the compiler separately; it is not bundled with these repositories.
+
+Place the repositories next to each other as `ModSeeker/` and `Hidder/`, then run this from the folder containing both:
+
+```powershell
+.\ModSeeker\Tools\StartCustomBuild.ps1
 ```
-Join Server
-    |
-    v
-[ Announce Presence ]       -- Hidder tells the server it's installed
-    |
-    v
-[ Cryptographic Challenge ] -- Server sends a unique challenge
-    |                          Hidder signs it using the native security module
-    v
-[ Launcher Detection ]      -- Native module identifies your launcher
-    |                          Result is sent alongside the challenge response
-    v
-[ Mod List Collection ]     -- Hidder reads your loaded mods from the Fabric runtime
-    |                          Encrypts and signs the data
-    |                          Sends it to the server
-    v
-[ Verification Complete ]   -- Server validates everything and admits you ✅
+
+On its first run, the tool creates the keys Hidder uses to sign client reports. It builds both projects, checks that ModSeeker recognizes Hidder's key, and saves the JARs in `dist/custom-pair/`. Later builds reuse those keys. The source defaults to Minecraft 26.3 / Java 25.
+
+To initialize the keys without building:
+
+```powershell
+.\ModSeeker\Tools\StartCustomBuild.ps1 -InitializeKeysOnly
 ```
 
-The entire process takes less than a second. You will not notice any delay during normal gameplay.
+Keep a secure backup of `Hidder/native/client_keys.generated.inc` so future builds can use the same keys. This file contains private key material and must not be published. Each ModSeeker server generates its own separate encryption keys on first startup.
 
-### What Data Is Collected
+If a dependency is not found automatically, pass its location with `-JdkDirectory`, `-OpenSslDirectory`, `-VcTools` or `-WindowsSdk`. Use the two generated JARs together.
 
-| Data | Source | Purpose |
-|------|--------|---------|
-| Installed mods (with versions) | Fabric Loader runtime registry | Blacklist enforcement |
-| Resource packs | Game directory scan | Server policy compliance |
-| Shader packs | Game directory scan | Server policy compliance |
-| Launcher name | Native OS API inspection | Launcher whitelist enforcement |
+</details>
 
-All collected data is encrypted before transmission and can only be read by the target server.
+## Licence
 
-### Communication Protocol
+Original Hidder code is licensed under [AGPL-3.0-or-later](LICENSE).
 
-Hidder communicates with ModSeeker over a custom Minecraft plugin messaging channel:
+### Third-party licences
 
-| Message | Direction | Description |
-|---------|-----------|-------------|
-| `ANNOUNCE_PRESENCE` | Client > Server | Declares that Hidder is installed |
-| `CHALLENGE` | Server > Client | Cryptographic challenge with unique nonce |
-| `CHALLENGE_RESPONSE` | Client > Server | Signed response with launcher identification |
-| `ACKNOWLEDGE_PRESENCE` | Server > Client | Server confirms the handshake |
-| `REQUEST_MODLIST` | Server > Client | Server requests the encrypted mod list |
-| `RESPONSE_MODLIST_ENCRYPTED` | Client > Server | Encrypted and integrity-signed mod list |
-
----
-
-## Security Architecture
-
-Hidder's security is built on three principles: **authentication**, **confidentiality**, and **integrity**.
-
-### Authentication
-
-Every connection uses a unique cryptographic challenge-response handshake. The server generates a random nonce; Hidder signs it using the native security module. This proves the client is running the authentic, unmodified Hidder mod.
-
-### Confidentiality
-
-Mod list data is encrypted using hybrid encryption before transmission. A random AES-256 session key encrypts the payload, and the session key itself is encrypted with the server's RSA public key. Only the target server can decrypt the data.
-
-### Integrity
-
-Each encrypted response includes a session-bound HMAC signature computed inside the native module. The server verifies this signature after decryption, ensuring the data was not modified and was produced during the current session — not replayed from a previous one.
-
-### Native Security Module
-
-Critical operations run inside a compiled C++ library (`hidder_vault.dll`) rather than Java bytecode:
-
-- Cryptographic key operations
-- HMAC computation
-- Launcher detection via OS APIs
-- Data encryption
-
-This significantly raises the difficulty of reverse engineering compared to standard Java-based mods.
-
-> **Warning:** Do not modify, replace, or delete the native library files. Doing so will break communication with ModSeeker servers.
-
----
-
-## Detected Launchers
-
-Hidder can identify the following launchers through native OS-level inspection:
-
-| Launcher | | Launcher |
-|----------|-|----------|
-| Prism Launcher | | Lunar Client |
-| MultiMC | | Badlion Client |
-| CurseForge | | Feather Client |
-| Modrinth App | | LabyMod |
-| ATLauncher | | TLauncher |
-| GDLauncher | | SKLauncher |
-| Technic Launcher | | Pojav Launcher |
-| FTB App | | |
-
-Unrecognized launchers are reported as `unknown`. Server administrators decide whether to allow or block unknown launchers.
-
----
-
-## Building from Source
-
-### Prerequisites
-
-- Visual Studio with C++ desktop development tools (Windows native compilation)
-- OpenSSL development libraries
-- JDK 21+ (JDK 25+ for Minecraft 26.1)
-- Gradle (wrapper included)
-
-### Steps
-
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/RAFIN-G/Hidder
-   ```
-
-2. **Key Generation (Required)** 🔑
-
-   Both Hidder and ModSeeker share cryptographic keys. Keys are generated using the tool included in the [ModSeeker repository](https://github.com/RAFIN-G/ModSeeker/tree/main/Tools). You only need to run it once — it generates keys for **both** projects.
-
-   ```bash
-   cd ModSeeker/Tools
-   javac KeyGen.java
-   java KeyGen
-   ```
-
-   This generates **5 files**. Each file contains the exact line to find and replace — just open it and follow the instructions inside.
-
-   **2 files go into this repo (Hidder):**
-
-   | Generated File | Destination File | What to Find & Replace |
-   |----------------|------------------|------------------------|
-   | `CLIENT_KEYS_CPP.txt` | [`native/hidder_vault.cpp`](https://github.com/RAFIN-G/Hidder/blob/main/native/hidder_vault.cpp) | Search for `RSA KEY COMPONENTS` — replace all `const std::string` lines: `B64_MODULUS`, `B64_PUB_EXP`, `B64_PRIV_EXP`, `B64_PRIME1`, `B64_PRIME2`, `B64_EXP1`, `B64_EXP2`, `B64_COEFF`, `SRV_B64_MODULUS`, `SRV_B64_EXP` |
-   | `HMAC_SECRET_CPP.txt` | [`native/hidder_vault.cpp`](https://github.com/RAFIN-G/Hidder/blob/main/native/hidder_vault.cpp) | Search for `ENCODED_HMAC_KEY` inside the `computeHmac` function — replace the `unsigned char` array and key length |
-
-   **3 files go into the [ModSeeker](https://github.com/RAFIN-G/ModSeeker) repo:**
-
-   | Generated File | Destination File | Variable to Find |
-   |----------------|------------------|------------------|
-   | `SERVER_KEY_JAVA.txt` | [`ModSeeker/src/.../SecurityManager.java`](https://github.com/RAFIN-G/ModSeeker/blob/main/src/main/java/com/example/modseeker/SecurityManager.java) | `SERVER_PRIVATE_KEY = "REPLACE_WITH..."` |
-   | `SERVER_VERIFY_KEY.txt` | [`ModSeeker/src/.../SecurityManager.java`](https://github.com/RAFIN-G/ModSeeker/blob/main/src/main/java/com/example/modseeker/SecurityManager.java) | `DEFAULT_PUBLIC_KEY = "REPLACE_WITH..."` |
-   | `HMAC_SECRET_JAVA.txt` | [`ModSeeker/src/.../HandshakeManager.java`](https://github.com/RAFIN-G/ModSeeker/blob/main/src/main/java/com/example/modseeker/HandshakeManager.java) **AND** [`SecurityManager.java`](https://github.com/RAFIN-G/ModSeeker/blob/main/src/main/java/com/example/modseeker/SecurityManager.java) | `HMAC_SECRET = "REPLACE_WITH..."` (in **both** files — must be identical) |
-
-   > **Important:** Every deployment should use its own unique keys. Never reuse keys from another server. The HMAC secret must be **identical** across `HandshakeManager.java`, `SecurityManager.java`, and `hidder_vault.cpp` — all three files use it for Layer 1 and Layer 3 verification. The HMAC key is XOR-encoded in the C++ source to prevent extraction via `strings` or hex editors on the compiled DLL — it is decoded at runtime and zeroed from memory after use.
-
-3. Compile the native library (Windows):
-   ```bash
-   native/compile_vault.bat
-   ```
-
-4. Build the JAR:
-   ```bash
-   ./gradlew build    # Linux/macOS
-   gradlew.bat build  # Windows
-   ```
-
-The compiled JAR will be in `build/libs/`.
-
-### Build Order
-
-When setting up a new deployment from scratch:
-
-1. Run `KeyGen.java` to generate all 5 key files
-2. Paste `CLIENT_KEYS_CPP.txt` into `hidder_vault.cpp` → replace the `RSA KEY COMPONENTS` section
-3. Paste `HMAC_SECRET_CPP.txt` into `hidder_vault.cpp` → replace the `ENCODED_HMAC_KEY` array
-4. Paste `SERVER_KEY_JAVA.txt` and `SERVER_VERIFY_KEY.txt` into `SecurityManager.java`
-5. Paste `HMAC_SECRET_JAVA.txt` into **both** `HandshakeManager.java` and `SecurityManager.java`
-6. Compile `hidder_vault.dll` (`native/compile_vault.bat`)
-7. Build Hidder mod (`gradlew build`)
-8. Build ModSeeker plugin (`gradlew jar`)
-
----
-
-## Technical Summary
-
-| Property | Details |
-|----------|---------|
-| Mod loader | Fabric |
-| Minecraft versions | 1.21.4 – 1.21.11, 26.1 |
-| Java version | 21+ (25+ for 26.1) |
-| Encryption | RSA-2048 + AES-256-CBC |
-| Authentication | HMAC-SHA256 |
-| Signatures | RSA-SHA256 |
-| Native module | C++ with OpenSSL |
-| Platform | Windows (native DLL) |
-
----
-
-## License
-
-This project is licensed under **AGPL-3.0**. See the [LICENSE](https://github.com/RAFIN-G/Hidder/blob/main/LICENSE) file for details.
+- Hidder's DEFLATE reader is adapted from **Mark Adler's puff**, under the [Zlib licence](LICENSES/Zlib.txt). The original notice is retained in [the source](native/mod_inflate.cpp).
+- The native library links **OpenSSL 3.x**, under [Apache-2.0](LICENSES/Apache-2.0.txt).
+- The **Gradle Wrapper** is distributed under [Apache-2.0](LICENSES/Apache-2.0.txt). Dependency licences remain with their respective projects.
