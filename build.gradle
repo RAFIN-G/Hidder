@@ -1,55 +1,451 @@
+// SPDX-FileCopyrightText: 2026 ModSeeker
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 plugins {
-    id 'net.fabricmc.fabric-loom' version '1.15.5'
+    id 'net.fabricmc.fabric-loom' version "${loom_version}"
     id 'maven-publish'
 }
 
 version = project.mod_version
 group = project.maven_group
+def targetJava = project.java_version.toString().toInteger()
+def targetMinecraft = project.minecraft_target.toString()
+def generatedBuildTargetDirectory = layout.buildDirectory.dir('generated/sources/build-target/java/main')
+def remappedRuntime = plugins.hasPlugin('net.fabricmc.fabric-loom-remap')
+def fingerprintRuntimeJar = layout.buildDirectory.file('fingerprint-runtime/hidder-runtime.jar')
+
+def loaderVersions = project.loader_versions.toString().split(',', -1).toList()
+if (loaderVersions.isEmpty() || loaderVersions.size() > 16 ||
+        loaderVersions.toSet().size() != loaderVersions.size() ||
+        loaderVersions.any { !(it ==~ /[0-9]+\.[0-9]+\.[0-9]+/) } ||
+        !loaderVersions.contains(project.loader_version.toString())) {
+    throw new GradleException('Invalid or inconsistent Loader versions')
+}
+def loaderProfileChecksumFile = layout.projectDirectory.file('loader-profile-checksums.json')
+def loaderProfileProperties = layout.buildDirectory.file('generated/native/loader-profiles.properties')
+def loaderProfileConfigurations = loaderVersions.collectEntries { value ->
+    def dependency = dependencies.create("net.fabricmc:fabric-loader:${value}")
+    def configuration = configurations.detachedConfiguration(dependency)
+    configuration.transitive = false
+    [(value): configuration]
+}
+def loaderProfileJars = providers.provider {
+    loaderProfileConfigurations.collectEntries { value, configuration -> [(value): configuration.singleFile] }
+}
+
 
 repositories {
     mavenCentral()
-    maven {
-        name = 'Fabric'
-        url = 'https://maven.fabricmc.net/'
-    }
 }
 
 dependencies {
-    // To change the versions see the gradle.properties file
     minecraft "com.mojang:minecraft:${project.minecraft_version}"
-    // No yarn mappings — 26.1 is unobfuscated
     implementation "net.fabricmc:fabric-loader:${project.loader_version}"
-
-    // Fabric API
     implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
 }
 
+def nativeVaultResource = layout.projectDirectory.file('src/main/resources/hidder_vault.dll')
+def nativeDigestFile = layout.buildDirectory.file('generated/native-digests.properties')
+def classFingerprintToolSource = layout.projectDirectory.file('build-tools/ClassBytecodeFingerprintGenerator.java')
+def classFingerprintToolClasses = layout.buildDirectory.dir('build-tools/class-fingerprint-classes')
+def classFingerprintHeader = layout.buildDirectory.file('generated/native/class_fingerprints.generated.inc')
+def classFingerprintDigest = layout.buildDirectory.file('generated/native/class_fingerprints.generated.sha256')
+def clientReportKeySource = rootProject.file('../ModSeeker/src/main/java/com/example/modseeker/protocol/ProtocolConstants.java')
+def clientReportKeyHeader = layout.buildDirectory.file('generated/native/client_report_key.generated.inc')
+def clientReportKeyDigest = layout.buildDirectory.file('generated/client-report-public-key.sha256')
+def mixinExtrasRuntimeJar = layout.buildDirectory.file('generated/native/mixinextras-runtime.jar')
+def nativeFingerprintDigestResource = layout.projectDirectory.file('src/main/resources/native-class-fingerprints.sha256')
+def projectFingerprintClasses = [
+        [symbol: 'EXPECTED_NATIVE_BRIDGE_FINGERPRINT', path: 'com/example/hidder/NativeBridge.class'],
+        [symbol: 'EXPECTED_HIDDER_FABRIC_FINGERPRINT', path: 'com/example/hidder/HidderFabric.class'],
+        [symbol: 'EXPECTED_NATIVE_LIBRARY_LOADER_FINGERPRINT', path: 'com/example/hidder/NativeLibraryLoader.class']
+]
+def fabricFingerprintClasses = [
+        [symbol: 'EXPECTED_FABRIC_LOADER_API_FINGERPRINT', path: 'net/fabricmc/loader/api/FabricLoader.class'],
+        [symbol: 'EXPECTED_FABRIC_LOADER_IMPL_FINGERPRINT', path: 'net/fabricmc/loader/impl/FabricLoaderImpl.class'],
+        [symbol: 'EXPECTED_FABRIC_LAUNCHER_BASE_FINGERPRINT', path: 'net/fabricmc/loader/impl/launch/FabricLauncherBase.class'],
+        [symbol: 'EXPECTED_KNOT_CLASS_LOADER_FINGERPRINT', path: 'net/fabricmc/loader/impl/launch/knot/KnotClassLoader.class'],
+        [symbol: 'EXPECTED_KNOT_CLASS_DELEGATE_FINGERPRINT', path: 'net/fabricmc/loader/impl/launch/knot/KnotClassDelegate.class'],
+        [symbol: 'EXPECTED_ENTRYPOINT_STORAGE_FINGERPRINT', path: 'net/fabricmc/loader/impl/entrypoint/EntrypointStorage.class']
+]
+def fabricLoaderJar = providers.provider {
+    def jar = configurations.runtimeClasspath.files.find {
+        it.name == "fabric-loader-${project.loader_version}.jar"
+    }
+    if (jar == null) {
+        throw new GradleException("fabric-loader-${project.loader_version}.jar is unavailable")
+    }
+    jar
+}
+def readMixinExtrasRuntime = { File loaderJar ->
+    def loaderArchive = new java.util.zip.ZipFile(loaderJar)
+    try {
+        def metadataEntry = loaderArchive.getEntry('fabric.mod.json')
+        if (metadataEntry == null || metadataEntry.isDirectory()) {
+            throw new GradleException('Fabric Loader metadata is unavailable')
+        }
+        def metadata
+        loaderArchive.getInputStream(metadataEntry).withCloseable {
+            metadata = new groovy.json.JsonSlurper().parse(it)
+        }
+        def candidates = []
+        (metadata.jars ?: []).each { declaration ->
+            def path = declaration.file
+            if (!(path instanceof String) || path.isBlank()) {
+                throw new GradleException('Fabric Loader contains an invalid nested JAR declaration')
+            }
+            def nestedEntry = loaderArchive.getEntry(path)
+            if (nestedEntry == null || nestedEntry.isDirectory()) {
+                throw new GradleException("Fabric Loader nested JAR is unavailable: ${path}")
+            }
+            byte[] nestedBytes
+            loaderArchive.getInputStream(nestedEntry).withCloseable {
+                nestedBytes = it.bytes
+            }
+            def nestedMetadata = null
+            new java.util.zip.ZipInputStream(new java.io.ByteArrayInputStream(nestedBytes)).withCloseable { nested ->
+                for (def entry = nested.nextEntry; entry != null; entry = nested.nextEntry) {
+                    if (entry.name == 'fabric.mod.json' && !entry.isDirectory()) {
+                        if (nestedMetadata != null) {
+                            throw new GradleException("Nested JAR has duplicate Fabric metadata: ${path}")
+                        }
+                        nestedMetadata = new groovy.json.JsonSlurper().parse(
+                                new java.io.ByteArrayInputStream(nested.readAllBytes()))
+                    }
+                }
+            }
+            if (nestedMetadata?.id == 'mixinextras') {
+                if (!(nestedMetadata.version instanceof String) || nestedMetadata.version.isBlank()) {
+                    throw new GradleException('MixinExtras version is unavailable')
+                }
+                candidates.add([path: path, version: nestedMetadata.version])
+            }
+        }
+        if (candidates.size() != 1) {
+            throw new GradleException("Expected exactly one loader-bundled MixinExtras JAR, found ${candidates.size()}")
+        }
+        def candidate = candidates.first()
+        [identity: "mixinextras:${candidate.version}", source: loaderJar.absolutePath + '!/' + candidate.path]
+    } finally {
+        loaderArchive.close()
+    }
+}
+
+def mixinExtrasRuntime = providers.provider { readMixinExtrasRuntime(fabricLoaderJar.get()) }
+
+tasks.register('generateLoaderProfiles') {
+    inputs.property('loaderVersions', loaderVersions)
+    inputs.file(loaderProfileChecksumFile)
+    inputs.file('src/main/resources/fabric.mod.json')
+    inputs.files(providers.provider { loaderProfileJars.get().values() })
+    outputs.file(loaderProfileProperties)
+    doLast {
+        def checksums = new groovy.json.JsonSlurper().parse(loaderProfileChecksumFile.asFile)
+        def metadata = new groovy.json.JsonSlurper().parse(file('src/main/resources/fabric.mod.json'))
+        if (metadata.depends.fabricloader != loaderVersions) {
+            throw new GradleException('Fabric metadata does not match the Loader profiles')
+        }
+        def properties = new Properties()
+        properties.setProperty('versions', loaderVersions.join(','))
+        loaderProfileJars.get().each { value, jar ->
+            def expected = checksums[value]
+            if (!(expected instanceof String) || !(expected ==~ /[a-f0-9]{64}/) ||
+                    jar.length() > 16L * 1024 * 1024) {
+                throw new GradleException("Invalid Loader checksum input: ${value}")
+            }
+            def digest = java.security.MessageDigest.getInstance('SHA-256').digest(jar.bytes)
+                    .collect { String.format('%02x', it & 0xff) }.join()
+            if (digest != expected) {
+                throw new GradleException("Loader checksum mismatch: ${value}")
+            }
+            def runtime = readMixinExtrasRuntime(jar)
+            properties.setProperty(value + '.jar', jar.absolutePath)
+            properties.setProperty(value + '.sha256', expected)
+            properties.setProperty(value + '.mixinIdentity', runtime.identity.toString())
+            properties.setProperty(value + '.mixinPath', runtime.source.substring(runtime.source.indexOf('!/') + 2))
+        }
+        def output = loaderProfileProperties.get().asFile
+        output.parentFile.mkdirs()
+        output.withWriter('UTF-8') { properties.store(it, null) }
+    }
+}
+
+tasks.register('compileClassFingerprintTool', JavaCompile) {
+    source = files(classFingerprintToolSource)
+    classpath = files()
+    destinationDirectory = classFingerprintToolClasses
+    options.encoding = 'UTF-8'
+    options.release = 25
+}
+
+tasks.register('generateBuildTarget') {
+    inputs.property('minecraftTarget', targetMinecraft)
+    outputs.dir(generatedBuildTargetDirectory)
+
+    doLast {
+        def output = generatedBuildTargetDirectory.get().file('com/example/hidder/BuildTarget.java').asFile
+        output.parentFile.mkdirs()
+        output.setText("package com.example.hidder;${System.lineSeparator()}${System.lineSeparator()}final class BuildTarget {${System.lineSeparator()}    static final String MINECRAFT_VERSION = \"${targetMinecraft}\";${System.lineSeparator()}${System.lineSeparator()}    private BuildTarget() {${System.lineSeparator()}    }${System.lineSeparator()}}${System.lineSeparator()}", 'UTF-8')
+    }
+}
+
+sourceSets.main.java.srcDir(generatedBuildTargetDirectory)
+
+tasks.named('compileJava') {
+    dependsOn tasks.named('generateBuildTarget')
+}
+
+if (remappedRuntime) {
+    def fingerprintClasses = tasks.register('fingerprintClassesJar', Jar) {
+        dependsOn tasks.named('compileJava')
+        from(sourceSets.main.output.classesDirs)
+        from('src/main/resources/fabric.mod.json') {
+            expand version: project.version,
+                    minecraftDependency: project.minecraft_dependency,
+                    loaderVersion: project.loader_version,
+            loaderVersions: loaderVersions,
+                    javaVersion: targetJava
+        }
+        destinationDirectory = layout.buildDirectory.dir('fingerprint-input')
+        archiveFileName = 'hidder-classes.jar'
+    }
+    tasks.register('remapFingerprintClasses', net.fabricmc.loom.task.RemapJarTask) {
+        dependsOn fingerprintClasses
+        inputFile = fingerprintClasses.flatMap { it.archiveFile }
+        destinationDirectory = layout.buildDirectory.dir('fingerprint-runtime')
+        archiveFileName = 'hidder-runtime.jar'
+        addNestedDependencies = false
+        sourceNamespace = 'named'
+        targetNamespace = 'intermediary'
+    }
+}
+
+tasks.register('generateClientReportKeyIdentity') {
+    inputs.file(clientReportKeySource)
+    outputs.file(clientReportKeyHeader)
+    outputs.file(clientReportKeyDigest)
+
+    doLast {
+        def source = clientReportKeySource.getText('UTF-8')
+        def matcher = java.util.regex.Pattern.compile('CLIENT_PUBLIC_KEY\\s*=\\s*"([A-Za-z0-9+/]+={0,2})"').matcher(source)
+        if (!matcher.find()) {
+            throw new GradleException('ModSeeker client report public key is unavailable')
+        }
+        def encoded = matcher.group(1)
+        if (matcher.find()) {
+            throw new GradleException('ModSeeker client report public key is ambiguous')
+        }
+        byte[] publicKey
+        try {
+            publicKey = Base64.decoder.decode(encoded)
+            java.security.KeyFactory.getInstance('RSA').generatePublic(
+                    new java.security.spec.X509EncodedKeySpec(publicKey))
+        } catch (Exception exception) {
+            throw new GradleException('ModSeeker client report public key is invalid', exception)
+        }
+        def digest = java.security.MessageDigest.getInstance('SHA-256').digest(publicKey)
+                .collect { String.format('%02x', it & 0xff) }.join()
+        def identity = "MODSEEKER_REPORT_KEY_SHA256=${digest}"
+        def header = clientReportKeyHeader.get().asFile
+        header.parentFile.mkdirs()
+        header.setText("static const char EXPECTED_CLIENT_REPORT_KEY_IDENTITY[] = \"${identity}\";${System.lineSeparator()}", 'US-ASCII')
+        def output = clientReportKeyDigest.get().asFile
+        output.parentFile.mkdirs()
+        output.setText("${digest}${System.lineSeparator()}", 'US-ASCII')
+    }
+}
+
+tasks.register('generateClassFingerprints', JavaExec) {
+    dependsOn tasks.named('compileJava'), tasks.named('compileClassFingerprintTool'),
+            tasks.named('generateClientReportKeyIdentity')
+    classpath = files(classFingerprintToolClasses)
+    mainClass = 'ClassBytecodeFingerprintGenerator'
+    inputs.files(projectFingerprintClasses.collect {
+        layout.buildDirectory.file("classes/java/main/${it.path}")
+    })
+    if (remappedRuntime) {
+        dependsOn tasks.named('remapFingerprintClasses')
+        inputs.file(fingerprintRuntimeJar)
+    }
+    inputs.file(fabricLoaderJar)
+    inputs.property('projectFingerprintClasses', projectFingerprintClasses)
+    inputs.property('fabricFingerprintClasses', fabricFingerprintClasses)
+    outputs.file(classFingerprintHeader)
+    outputs.file(classFingerprintDigest)
+    outputs.file(mixinExtrasRuntimeJar)
+
+    doFirst {
+        def classes = layout.buildDirectory.dir('classes/java/main').get().asFile
+        def loaderJar = fabricLoaderJar.get()
+        def runtime = mixinExtrasRuntime.get()
+        def arguments = [classFingerprintHeader.get().asFile.absolutePath, runtime.identity, runtime.source]
+        projectFingerprintClasses.each {
+            arguments.add(it.symbol)
+            arguments.add(remappedRuntime
+                    ? fingerprintRuntimeJar.get().asFile.absolutePath + '!/' + it.path
+                    : new File(classes, it.path).absolutePath)
+        }
+        fabricFingerprintClasses.each {
+            arguments.add(it.symbol)
+            arguments.add(loaderJar.absolutePath + '!/' + it.path)
+        }
+        setArgs(arguments)
+    }
+}
+
+tasks.register('verifyNativeClassFingerprints') {
+    dependsOn tasks.named('generateClassFingerprints')
+    inputs.file(classFingerprintDigest)
+    inputs.file(clientReportKeyDigest)
+    inputs.file(nativeFingerprintDigestResource)
+    inputs.file(nativeVaultResource)
+
+    doLast {
+        def generated = classFingerprintDigest.get().asFile.getText('US-ASCII').trim()
+        def embedded = nativeFingerprintDigestResource.asFile.getText('US-ASCII').trim()
+        def reportKey = clientReportKeyDigest.get().asFile.getText('US-ASCII').trim()
+        def vault = nativeVaultResource.asFile.bytes
+        def identities = [embedded, "MODSEEKER_REPORT_KEY_SHA256=${reportKey}"]
+        def present = identities.collect { value ->
+            def identity = value.getBytes('US-ASCII')
+            boolean found = false
+            for (int offset = 0; offset <= vault.length - identity.length && !found; offset++) {
+                found = true
+                for (int index = 0; index < identity.length; index++) {
+                    if (vault[offset + index] != identity[index]) {
+                        found = false
+                        break
+                    }
+                }
+            }
+            found
+        }
+        if (!generated.matches('[0-9a-f]{64}') || generated != embedded ||
+                !reportKey.matches('[0-9a-f]{64}') || present.any { !it }) {
+            throw new GradleException('Native identities do not match the current Java, Fabric, and report-key inputs')
+        }
+    }
+}
+
+tasks.register('verifyPackagedClassFingerprints', JavaExec) {
+    def packageTask = tasks.named(remappedRuntime ? 'remapJar' : 'jar')
+    def verificationHeader = layout.buildDirectory.file('fingerprint-verification/class_fingerprints.generated.inc')
+    dependsOn packageTask, tasks.named('compileClassFingerprintTool')
+    classpath = files(classFingerprintToolClasses)
+    mainClass = 'ClassBytecodeFingerprintGenerator'
+    inputs.file(packageTask.flatMap { it.archiveFile })
+    inputs.file(classFingerprintDigest)
+
+    doFirst {
+        def archive = packageTask.get().archiveFile.get().asFile
+        def runtime = mixinExtrasRuntime.get()
+        def arguments = [verificationHeader.get().asFile.absolutePath, runtime.identity, runtime.source]
+        projectFingerprintClasses.each {
+            arguments.add(it.symbol)
+            arguments.add(archive.absolutePath + '!/' + it.path)
+        }
+        fabricFingerprintClasses.each {
+            arguments.add(it.symbol)
+            arguments.add(fabricLoaderJar.get().absolutePath + '!/' + it.path)
+        }
+        setArgs(arguments)
+    }
+
+    doLast {
+        def packaged = new File(verificationHeader.get().asFile.parentFile,
+                'class_fingerprints.generated.sha256').getText('US-ASCII').trim()
+        def expected = classFingerprintDigest.get().asFile.getText('US-ASCII').trim()
+        if (packaged != expected) {
+            throw new GradleException('Packaged runtime classes do not match the native class fingerprints')
+        }
+    }
+}
+
+['generateClassFingerprints', 'verifyPackagedClassFingerprints'].each { name ->
+    tasks.named(name, JavaExec) {
+        dependsOn tasks.named('generateLoaderProfiles')
+        inputs.file(loaderProfileProperties)
+        inputs.files(providers.provider { loaderProfileJars.get().values() })
+        systemProperty 'hidder.loaderProfiles', loaderProfileProperties.get().asFile.absolutePath
+    }
+}
+
+tasks.named('build') {
+    dependsOn tasks.named('verifyPackagedClassFingerprints')
+}
+
+tasks.register('generateNativeDigests') {
+    inputs.file(nativeVaultResource)
+    outputs.file(nativeDigestFile)
+
+    doLast {
+        def vault = nativeVaultResource.asFile
+        if (!vault.isFile() || vault.length() <= 0 || vault.length() > 16L * 1024 * 1024) {
+            throw new GradleException('hidder_vault.dll is missing or out of bounds')
+        }
+        def digest = java.security.MessageDigest.getInstance('SHA-256').digest(vault.bytes)
+                .collect { String.format('%02x', it & 0xff) }.join()
+        def output = nativeDigestFile.get().asFile
+        output.parentFile.mkdirs()
+        output.setText("hidder_vault.dll.sha256=${digest}${System.lineSeparator()}hidder_vault.dll.size=${vault.length()}${System.lineSeparator()}", 'UTF-8')
+    }
+}
+
 processResources {
-    inputs.property "version", project.version
+    dependsOn tasks.named('generateNativeDigests')
+    dependsOn tasks.named('verifyNativeClassFingerprints')
+    inputs.properties([
+            version: project.version,
+            minecraftDependency: project.minecraft_dependency,
+            loaderVersion: project.loader_version,
+            loaderVersions: loaderVersions,
+            javaVersion: targetJava
+    ])
+    exclude 'libcrypto-3-x64.dll'
+
+    from(nativeDigestFile) {
+        into ''
+    }
+
+    from(clientReportKeyDigest) {
+        into ''
+    }
 
     filesMatching("fabric.mod.json") {
-        expand "version": project.version
+        expand version: project.version,
+                minecraftDependency: project.minecraft_dependency,
+                loaderVersion: project.loader_version,
+            loaderVersions: loaderVersions,
+                javaVersion: targetJava
     }
 }
 
 tasks.withType(JavaCompile).configureEach {
-    it.options.release = 25
+    options.encoding = 'UTF-8'
+    if (name != 'compileClassFingerprintTool') {
+        options.release = targetJava
+    }
 }
 
 java {
     withSourcesJar()
-
-    sourceCompatibility = JavaVersion.VERSION_25
-    targetCompatibility = JavaVersion.VERSION_25
+    sourceCompatibility = JavaVersion.toVersion(targetJava)
+    targetCompatibility = JavaVersion.toVersion(targetJava)
 }
 
-jar {
-    from("LICENSE") {
-        rename { "${it}_${project.archivesBaseName}" }
+base {
+    archivesName = project.archives_base_name
+}
+
+tasks.withType(Jar).configureEach {
+    from(rootProject.file('LICENSE')) {
+        into 'META-INF'
+    }
+    from(rootProject.file('LICENSES')) {
+        into 'META-INF/licenses'
     }
 }
 
-// configure the maven publication
 publishing {
     publications {
         mavenJava(MavenPublication) {

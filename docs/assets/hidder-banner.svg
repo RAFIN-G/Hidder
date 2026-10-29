@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="320" viewBox="0 0 1200 320" role="img" aria-labelledby="title desc">
+  <title id="title">Hidder — The client companion to ModSeeker.</title>
+  <desc id="desc">A Fabric client mod for ModSeeker servers.</desc>
+  <rect width="1200" height="320" rx="20" fill="#101C2C"/>
+  <path d="M0 20A20 20 0 0 1 20 0H220V320H20A20 20 0 0 1 0 300Z" fill="#5746D9"/>
+  <g transform="translate(42 89) scale(1.38)" fill="#FFFFFF">
+    <path fill-rule="evenodd" d="M28 8H72L92 28V72L72 92H28L8 72V28ZM32 18H68L82 32V68L68 82H32L18 68V32Z"/>
+    <path d="M29 29H39V44H61V29H71V71H61V54H39V71H29Z"/>
+  </g>
+  <g font-family="Segoe UI, Arial, sans-serif">
+    <text x="270" y="82" fill="#B6A9FF" font-size="16" font-weight="700" letter-spacing="3">FABRIC</text>
+    <text x="266" y="160" fill="#FFFFFF" font-size="68" font-weight="700" letter-spacing="-2">Hidder</text>
+    <text x="270" y="207" fill="#CBD5E1" font-size="25">The client companion to ModSeeker.</text>
+    <path d="M270 244H1124" stroke="#2C3C50"/>
+    <text x="270" y="279" fill="#A9BACD" font-size="16">MOD REPORTS</text>
+    <circle cx="423" cy="273" r="3" fill="#5746D9"/>
+    <text x="443" y="279" fill="#A9BACD" font-size="16">LAUNCHER INFORMATION</text>
+  </g>
+</svg>

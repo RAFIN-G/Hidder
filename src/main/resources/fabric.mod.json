@@ -1,14 +1,14 @@
 {
   "schemaVersion": 1,
   "id": "hidder",
-  "version": "26.1",
+  "version": "${version}",
   "name": "Hidder",
   "description": "Hidder - Advanced mod verification and system information reporting",
   "icon": "assets/hidder/icon.png",
   "authors": [
     "RAFIN-G"
   ],
-  "license": "AGPL-3.0",
+  "license": "AGPL-3.0-or-later",
   "environment": "client",
   "entrypoints": {
     "client": [
@@ -16,13 +16,15 @@
     ]
   },
   "depends": {
-    "minecraft": "~26.1",
-    "java": ">=25",
+    "minecraft": "${minecraftDependency}",
+    "fabricloader": [
+      "0.19.3",
+      "0.19.5",
+      "0.20.1"
+    ],
+    "java": "${javaVersion}",
     "fabric-api": "*"
   },
-  "mixins": [
-    "hidder.mixins.json"
-  ],
   "custom": {
     "modmenu": {
       "description": "Hidder - Advanced server management system"
