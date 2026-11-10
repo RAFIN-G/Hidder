@@ -6,6 +6,7 @@ struct LoaderIntegrityProfile {
     const char* version;
     const char* mixinExtrasIdentity;
     unsigned char mixinExtrasDigest[64];
+    unsigned char loaderDigest[64];
     unsigned char classes[6][32];
 };
 

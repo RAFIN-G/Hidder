@@ -111,6 +111,8 @@ public final class ClassBytecodeFingerprintGenerator {
             header.append("    {\"").append(version).append("\", \"").append(runtimeIdentity).append("\", {");
             appendValues(header, MessageDigest.getInstance("SHA-512").digest(runtime));
             header.append("}, {");
+            appendValues(header, MessageDigest.getInstance("SHA-512").digest(readSource(jar)));
+            header.append("}, {");
             ByteArrayOutputStream measured = new ByteArrayOutputStream();
             for (int index = 0; index < classes.length; index++) {
                 byte[] digest = fingerprint(readSource(jar + "!/" + classes[index]));

@@ -632,6 +632,7 @@ static bool collectModsAndHashes(const std::string& gameDirNarrow, const std::ws
     std::vector<std::string> mods;
     std::vector<std::string> hashes;
     std::set<FileIdentity> seenPaths;
+    bool loaderSeen = false;
     bool mixinExtrasSeen = false;
     size_t totalBytes = 0;
     size_t nestedBytes = 0;
@@ -645,11 +646,24 @@ static bool collectModsAndHashes(const std::string& gameDirNarrow, const std::ws
         totalBytes += bytes.size();
         std::vector<std::string> modIds;
         if (!parseModIds(bytes, modIds, 0, nestedBytes)) return false;
+        bool declaresLoader = false;
         bool declaresMixinExtras = false;
         for (const std::string& modid : modIds) {
+            if (modid.rfind("fabricloader:", 0) == 0) declaresLoader = true;
             if (!modid.empty() && modid[0] != '+' && modid.rfind("mixinextras:", 0) == 0) {
                 declaresMixinExtras = true;
             }
+        }
+        if (declaresLoader) {
+            std::array<unsigned char, 64> digest{};
+            bool trusted = !loaderSeen
+                    && modIds[0] == std::string("fabricloader:") + profile->version
+                    && sha512Digest(bytes.data(), bytes.size(), digest)
+                    && CRYPTO_memcmp(digest.data(), profile->loaderDigest, digest.size()) == 0;
+            OPENSSL_cleanse(digest.data(), digest.size());
+            if (!trusted) return false;
+            loaderSeen = true;
+            continue;
         }
         if (declaresMixinExtras) {
             std::array<unsigned char, 64> digest{};
@@ -682,7 +696,7 @@ static bool collectModsAndHashes(const std::string& gameDirNarrow, const std::ws
         if (advanced) hashes.push_back(h);
     }
 
-    if (mods.empty()) return false;
+    if (mods.empty() || !loaderSeen) return false;
 
     for (size_t i = 0; i < mods.size(); i++) {
         if (i > 0) modsOut += ",";
